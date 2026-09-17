@@ -1,0 +1,727 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Yuri</title>
+  <script src="https://cdn.jsdelivr.net/npm/@ricky0123/vad-web@0.0.20/dist/bundle.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      min-height: 100vh;
+      background: #f7f7f8;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      margin: 0;
+      padding: 20px;
+      color: #1a1a1a;
+    }
+
+    .app {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 28px;
+      width: 100%;
+      min-height: 100vh;
+      padding: 24px;
+    }
+
+    .ring-wrapper {
+      position: relative;
+      width: 340px;
+      height: 340px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    @media (max-width: 480px) {
+      .ring-wrapper { width: 260px; height: 260px; }
+      canvas#ringCanvas { width: 260px !important; height: 260px !important; }
+    }
+
+    canvas#ringCanvas {
+      position: absolute;
+      top: 0; left: 0;
+      width: 340px; height: 340px;
+      display: block;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.45s ease;
+      border-radius: 50%;
+    }
+
+    canvas#ringCanvas.active { opacity: 1; }
+
+    .mic-button {
+      position: relative;
+      width: 130px; height: 130px;
+      border-radius: 50%;
+      background: #ffffff;
+      border: 3px solid #e5e5e5;
+      box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: border-color 0.25s, background 0.25s, box-shadow 0.3s, transform 0.1s;
+      z-index: 10;
+      outline: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .mic-button:active { transform: scale(0.96); }
+    .mic-button.idle { border-color: #e5e5e5; background: #ffffff; }
+    .mic-button.listening {
+      border-color: #10a37f;
+      background: #f0faf6;
+      box-shadow: 0 0 30px rgba(16, 163, 127, 0.15), 0 0 0 3px rgba(16, 163, 127, 0.08);
+    }
+    .mic-button.processing {
+      border-color: #d97706;
+      background: #fffbeb;
+      box-shadow: 0 0 30px rgba(217, 119, 6, 0.15), 0 0 0 3px rgba(217, 119, 6, 0.08);
+      animation: pulseAmber 1.4s infinite;
+    }
+    .mic-button.denied {
+      border-color: #e11d48;
+      background: #fff1f2;
+      box-shadow: 0 0 30px rgba(225, 29, 72, 0.15), 0 0 0 3px rgba(225, 29, 72, 0.08);
+    }
+
+    @keyframes pulseAmber {
+      0%   { box-shadow: 0 0 30px rgba(217, 119, 6, 0.15), 0 0 0 3px rgba(217, 119, 6, 0.08); }
+      50%  { box-shadow: 0 0 45px rgba(217, 119, 6, 0.3),  0 0 0 6px rgba(217, 119, 6, 0.12); }
+      100% { box-shadow: 0 0 30px rgba(217, 119, 6, 0.15), 0 0 0 3px rgba(217, 119, 6, 0.08); }
+    }
+
+    .mic-icon { width: 44px; height: 44px; color: #6b7280; transition: color 0.25s; }
+    .mic-button.listening .mic-icon { color: #10a37f; }
+    .mic-button.processing .mic-icon { color: #d97706; }
+    .mic-button.denied .mic-icon { color: #e11d48; }
+
+    .response-area {
+      width: 100%;
+      max-width: 560px;
+      min-height: 90px;
+      background: transparent;
+      border-radius: 0;
+      border: none;
+      padding: 20px 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      box-shadow: none;
+      transition: border-color 0.25s, box-shadow 0.25s;
+    }
+
+    .response-area.speaking { border-color: transparent; box-shadow: none; }
+
+    .response-header { display: flex; align-items: center; gap: 14px; }
+
+    .yuri-label {
+      font-size: 1rem;
+      font-weight: 600;
+      letter-spacing: 0.2px;
+      color: #10a37f;
+      background: transparent;
+      padding: 4px 0;
+      border-radius: 0;
+      border: none;
+    }
+
+    .waveform {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      height: 22px;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+      flex: 1;
+    }
+
+    .waveform.active { opacity: 1; }
+
+    .waveform span {
+      display: block;
+      width: 4px;
+      height: 8px;
+      background: #10a37f;
+      border-radius: 4px;
+      animation: waveAnim 0.75s infinite alternate ease-in-out;
+    }
+
+    .waveform span:nth-child(1) { animation-delay: 0.0s; height: 8px; }
+    .waveform span:nth-child(2) { animation-delay: 0.12s; height: 14px; }
+    .waveform span:nth-child(3) { animation-delay: 0.24s; height: 20px; }
+    .waveform span:nth-child(4) { animation-delay: 0.36s; height: 14px; }
+    .waveform span:nth-child(5) { animation-delay: 0.48s; height: 8px; }
+    .waveform span:nth-child(6) { animation-delay: 0.6s; height: 12px; }
+    .waveform span:nth-child(7) { animation-delay: 0.72s; height: 18px; }
+    .waveform span:nth-child(8) { animation-delay: 0.84s; height: 12px; }
+    .waveform span:nth-child(9) { animation-delay: 0.96s; height: 8px; }
+
+    @keyframes waveAnim {
+      0%   { transform: scaleY(0.5); opacity: 0.6; }
+      100% { transform: scaleY(1.8); opacity: 1; }
+    }
+
+    .status {
+      font-size: 0.85rem;
+      color: #9ca3af;
+      text-align: center;
+      min-height: 1.4em;
+      letter-spacing: 0.2px;
+      transition: color 0.25s;
+    }
+
+    .status.error { color: #e11d48; }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="ring-wrapper">
+      <canvas id="ringCanvas" width="340" height="340"></canvas>
+      <button class="mic-button idle" id="micButton" aria-label="Start Yuri">
+        <svg class="mic-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z" />
+          <path d="M19 10v1a7 7 0 0 1-14 0v-1" />
+          <line x1="12" y1="19" x2="12" y2="22" />
+          <line x1="8" y1="22" x2="16" y2="22" />
+        </svg>
+      </button>
+    </div>
+
+    <div class="response-area" id="responseArea">
+      <div class="response-header">
+        <span class="yuri-label">Yuri:</span>
+        <div class="waveform" id="waveform">
+          <span></span><span></span><span></span><span></span><span></span>
+          <span></span><span></span><span></span><span></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="status" id="statusText">Click anywhere to start Yuri</div>
+  </div>
+
+  <script>
+    (function() {
+      "use strict";
+
+      const ENDPOINT = "https://xsljblxikdfmpyjntoze.supabase.co/functions/v1/yuri-chat";
+
+      // --------------------------------------------------------------
+      // CONFIG / STATE
+      // --------------------------------------------------------------
+      const CONFIG = {
+        WAKE_WORDS: ["yuri", "hey yuri", "ok yuri", "hi yuri", "yo yuri", "hey yuri", "okay yuri"],
+        ACTIVATION_TIMEOUT: 10000,
+        COMMAND_WAIT: 4000,
+        CONVERSATION_WINDOW: 10000,
+        VAD_SILENCE_MS: 1800,
+        DEDUP_WINDOW: 1000,
+        HISTORY_LIMIT: 30,
+        MAX_RESTART_DELAY: 2000,
+        RESTART_BASE: 100,
+        WATCHDOG_INTERVAL: 3000
+      };
+
+      let micEnabled = false;
+      let recognition = null;
+      let recognitionActive = false;
+      let restartDelay = CONFIG.RESTART_BASE;
+      let lastTranscript = "";
+      let lastTranscriptTime = 0;
+      let conversationHistory = [];
+      let activationTimer = null;
+      let commandWaitTimer = null;
+      let conversationTimer = null;
+      let vadSpeechEndTimer = null;
+      let watchdogInterval = null;
+      let isSpeaking = false;
+      let audioContext = null;
+      let analyser = null;
+      let micStream = null;
+      let vadInstance = null;
+      let ringCanvas = document.getElementById('ringCanvas');
+      let ctx = ringCanvas.getContext('2d');
+      let animationFrame = null;
+      let volumeData = new Array(36).fill(0);
+
+      const micButton = document.getElementById('micButton');
+      const statusText = document.getElementById('statusText');
+      const responseArea = document.getElementById('responseArea');
+      const waveform = document.getElementById('waveform');
+      const ringCanvasEl = ringCanvas;
+
+      // --------------------------------------------------------------
+      // UI HELPERS
+      // --------------------------------------------------------------
+      function setMicState(state) { micButton.className = 'mic-button ' + state; }
+      function setStatus(text, isError = false) {
+        statusText.textContent = text;
+        statusText.classList.toggle('error', isError);
+      }
+      function showWaveform(active) {
+        waveform.classList.toggle('active', active);
+        responseArea.classList.toggle('speaking', active);
+      }
+      function showRing(active) { ringCanvasEl.classList.toggle('active', active); }
+
+      // --------------------------------------------------------------
+      // AUDIO PIPELINE
+      // --------------------------------------------------------------
+      async function initAudio() {
+        if (micStream) return true;
+        try {
+          micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          if (!audioContext) {
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+          }
+          const source = audioContext.createMediaStreamSource(micStream);
+          analyser = audioContext.createAnalyser();
+          analyser.fftSize = 256;
+          analyser.smoothingTimeConstant = 0.75;
+          source.connect(analyser);
+
+          if (typeof VAD !== 'undefined') {
+            try {
+              vadInstance = await VAD.create({
+                stream: micStream,
+                positiveSpeechThreshold: 0.5,
+                negativeSpeechThreshold: 0.3,
+                minSpeechFrames: 3,
+                preSpeechPadFrames: 10,
+                redemptionFrames: 10,
+                onSpeechStart: () => {},
+                onSpeechEnd: () => {
+                  if (vadSpeechEndTimer) clearTimeout(vadSpeechEndTimer);
+                  vadSpeechEndTimer = setTimeout(() => {
+                    vadSpeechEndTimer = null;
+                  }, CONFIG.VAD_SILENCE_MS);
+                },
+              });
+              vadInstance.start();
+            } catch (vadErr) {
+              console.warn('Audio init failed (non-fatal):', vadErr);
+            }
+          }
+          return true;
+        } catch (err) {
+          console.error('Mic access error:', err);
+          setStatus('Microphone access denied', true);
+          setMicState('denied');
+          return false;
+        }
+      }
+
+      // --------------------------------------------------------------
+      // SPEECH RECOGNITION
+      // --------------------------------------------------------------
+      function initRecognition() {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SpeechRecognition) {
+          setStatus('Speech recognition not supported', true);
+          setMicState('denied');
+          return null;
+        }
+        const recog = new SpeechRecognition();
+        recog.continuous = true;
+        recog.interimResults = true;
+        recog.lang = 'en-US';
+
+        recog.onresult = (event) => {
+          let finalTranscript = '';
+          for (let i = event.resultIndex; i < event.results.length; i++) {
+            if (event.results[i].isFinal) {
+              finalTranscript += event.results[i][0].transcript.trim();
+            }
+          }
+          if (finalTranscript) handleFinalTranscript(finalTranscript);
+        };
+
+        recog.onerror = (event) => {
+          if (event.error === 'not-allowed') {
+            setStatus('Microphone access denied', true);
+            setMicState('denied');
+            micEnabled = false;
+          }
+        };
+
+        recog.onend = () => {
+          recognitionActive = false;
+          if (!micEnabled) return;
+          restartDelay = Math.min(restartDelay * 1.5, CONFIG.MAX_RESTART_DELAY);
+          setTimeout(() => {
+            if (micEnabled && !recognitionActive) {
+              try {
+                recog.start();
+                recognitionActive = true;
+                restartDelay = CONFIG.RESTART_BASE;
+              } catch (e) {}
+            }
+          }, restartDelay);
+        };
+
+        return recog;
+      }
+
+      // --------------------------------------------------------------
+      // TRANSCRIPT HANDLING
+      // --------------------------------------------------------------
+      function handleFinalTranscript(transcript) {
+        const now = Date.now();
+        const lower = transcript.toLowerCase().trim();
+
+        if (lower === lastTranscript && (now - lastTranscriptTime) < CONFIG.DEDUP_WINDOW) return;
+        lastTranscript = lower;
+        lastTranscriptTime = now;
+
+        if (isSpeaking) return;
+
+        const wakeWordMatch = CONFIG.WAKE_WORDS.some(w => lower.includes(w));
+        if (wakeWordMatch) {
+          let command = '';
+          for (let w of CONFIG.WAKE_WORDS) {
+            const idx = lower.indexOf(w);
+            if (idx !== -1) {
+              command = transcript.slice(idx + w.length).trim();
+              command = command.replace(/^[,.\s]+/, '');
+              break;
+            }
+          }
+
+          activateYuri();
+
+          if (command) {
+            sendCommand(command);
+          } else {
+            setStatus('I\'m listening…');
+            if (commandWaitTimer) clearTimeout(commandWaitTimer);
+            commandWaitTimer = setTimeout(() => {
+              if (!isSpeaking) speakResponse("I'm listening.");
+              commandWaitTimer = null;
+            }, CONFIG.COMMAND_WAIT);
+          }
+          return;
+        }
+
+        if (activationTimer) {
+          if (commandWaitTimer) { clearTimeout(commandWaitTimer); commandWaitTimer = null; }
+          if (lower.length > 0) sendCommand(transcript);
+        }
+      }
+
+      // --------------------------------------------------------------
+      // ACTIVATION & TIMERS
+      // --------------------------------------------------------------
+      function activateYuri() {
+        if (activationTimer) clearTimeout(activationTimer);
+        if (commandWaitTimer) { clearTimeout(commandWaitTimer); commandWaitTimer = null; }
+
+        playChime();
+        showRing(true);
+        setMicState('listening');
+
+        activationTimer = setTimeout(() => deactivateYuri(), CONFIG.ACTIVATION_TIMEOUT);
+
+        if (isSpeaking) {
+          window.speechSynthesis.cancel();
+          isSpeaking = false;
+          showWaveform(false);
+        }
+      }
+
+      function deactivateYuri() {
+        if (activationTimer) { clearTimeout(activationTimer); activationTimer = null; }
+        if (commandWaitTimer) { clearTimeout(commandWaitTimer); commandWaitTimer = null; }
+        if (conversationTimer) { clearTimeout(conversationTimer); conversationTimer = null; }
+        showRing(false);
+        setMicState('idle');
+        setStatus('Click anywhere to start Yuri');
+      }
+
+      // --------------------------------------------------------------
+      // BACKEND CALL (opaque — frontend has no idea what's behind it)
+      // --------------------------------------------------------------
+      async function sendCommand(command) {
+        if (!command || command.trim() === '') return;
+
+        if (commandWaitTimer) { clearTimeout(commandWaitTimer); commandWaitTimer = null; }
+
+        setMicState('processing');
+        setStatus('Thinking…');
+
+        conversationHistory.push({ role: 'user', content: command });
+        if (conversationHistory.length > CONFIG.HISTORY_LIMIT) {
+          conversationHistory = conversationHistory.slice(-CONFIG.HISTORY_LIMIT);
+        }
+
+        try {
+          const response = await fetch(ENDPOINT, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              messages: conversationHistory.slice(-10)
+            })
+          });
+
+          if (!response.ok) throw new Error('Backend error ' + response.status);
+
+          const data = await response.json();
+          const reply = (data && data.reply) ? String(data.reply).trim() : "I didn't get a response.";
+          speakResponse(reply);
+        } catch (err) {
+          console.error(err);
+          setStatus('Something went wrong', true);
+          setMicState('denied');
+          setTimeout(() => setMicState('idle'), 3000);
+        }
+      }
+
+      // --------------------------------------------------------------
+      // SPEECH SYNTHESIS
+      // --------------------------------------------------------------
+      function speakResponse(text) {
+        if (!text) return;
+        window.speechSynthesis.cancel();
+
+        const voices = window.speechSynthesis.getVoices();
+        let preferredVoice = voices.find(v => v.lang.startsWith('en') && v.name.toLowerCase().includes('female'));
+        if (!preferredVoice) preferredVoice = voices.find(v => v.lang.startsWith('en') && v.name.toLowerCase().includes('zira'));
+        if (!preferredVoice) preferredVoice = voices.find(v => v.lang.startsWith('en') && v.name.toLowerCase().includes('samantha'));
+        if (!preferredVoice) preferredVoice = voices.find(v => v.lang.startsWith('en'));
+        if (!preferredVoice && voices.length) preferredVoice = voices[0];
+
+        const utterance = new SpeechSynthesisUtterance(text);
+        if (preferredVoice) utterance.voice = preferredVoice;
+        utterance.rate = 1.0;
+        utterance.pitch = 1.1;
+        utterance.volume = 1.0;
+
+        utterance.onstart = () => {
+          isSpeaking = true;
+          setMicState('idle');
+          setStatus('Speaking…');
+          showWaveform(true);
+          conversationHistory.push({ role: 'assistant', content: text });
+          if (conversationHistory.length > CONFIG.HISTORY_LIMIT) {
+            conversationHistory = conversationHistory.slice(-CONFIG.HISTORY_LIMIT);
+          }
+        };
+
+        utterance.onend = () => {
+          isSpeaking = false;
+          showWaveform(false);
+          setStatus('Listening…');
+          setMicState('listening');
+
+          if (conversationTimer) clearTimeout(conversationTimer);
+          conversationTimer = setTimeout(() => deactivateYuri(), CONFIG.CONVERSATION_WINDOW);
+
+          if (activationTimer) clearTimeout(activationTimer);
+          activationTimer = setTimeout(() => deactivateYuri(), CONFIG.ACTIVATION_TIMEOUT);
+        };
+
+        utterance.onerror = () => {
+          isSpeaking = false;
+          showWaveform(false);
+          setMicState('listening');
+        };
+
+        window.speechSynthesis.speak(utterance);
+      }
+
+      // --------------------------------------------------------------
+      // CHIME
+      // --------------------------------------------------------------
+      function playChime() {
+        try {
+          const chimeCtx = new (window.AudioContext || window.webkitAudioContext)();
+          const now = chimeCtx.currentTime;
+          [880, 1318].forEach((freq, i) => {
+            const osc = chimeCtx.createOscillator();
+            const gain = chimeCtx.createGain();
+            osc.type = 'sine';
+            osc.frequency.value = freq;
+            gain.gain.setValueAtTime(0.0001, now);
+            gain.gain.exponentialRampToValueAtTime(0.12, now + 0.02 + i * 0.08);
+            gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.35 + i * 0.1);
+            osc.connect(gain);
+            gain.connect(chimeCtx.destination);
+            osc.start(now + i * 0.08);
+            osc.stop(now + 0.4 + i * 0.1);
+          });
+          setTimeout(() => chimeCtx.close(), 1000);
+        } catch (e) {}
+      }
+
+      // --------------------------------------------------------------
+      // REACTIVE RING VISUALIZER
+      // --------------------------------------------------------------
+      function drawRing() {
+        if (!analyser) {
+          animationFrame = requestAnimationFrame(drawRing);
+          return;
+        }
+
+        const bufferLength = analyser.frequencyBinCount;
+        const dataArray = new Uint8Array(bufferLength);
+        analyser.getByteFrequencyData(dataArray);
+
+        const bars = 36;
+        const step = Math.floor(bufferLength / bars);
+        for (let i = 0; i < bars; i++) {
+          let sum = 0;
+          for (let j = 0; j < step; j++) sum += dataArray[i * step + j] || 0;
+          const avg = sum / step;
+          volumeData[i] = volumeData[i] * 0.7 + avg * 0.3;
+        }
+
+        const w = ringCanvas.width;
+        const h = ringCanvas.height;
+        ctx.clearRect(0, 0, w, h);
+
+        const cx = w / 2;
+        const cy = h / 2;
+        const baseRadius = 105;
+        const maxBarHeight = 60;
+
+        ctx.save();
+        ctx.translate(cx, cy);
+
+        for (let i = 0; i < bars; i++) {
+          const angle = (i / bars) * Math.PI * 2 - Math.PI / 2;
+          const value = volumeData[i] / 255;
+          const barHeight = 10 + value * maxBarHeight;
+          const barWidth = 7;
+
+          ctx.save();
+          ctx.rotate(angle);
+          const grad = ctx.createLinearGradient(baseRadius, 0, baseRadius + barHeight, 0);
+          grad.addColorStop(0, `rgba(16, 163, 127, ${0.25 + value * 0.75})`);
+          grad.addColorStop(1, `rgba(16, 163, 127, ${0.05 + value * 0.35})`);
+          ctx.fillStyle = grad;
+          ctx.beginPath();
+          ctx.roundRect(baseRadius - 6, -barWidth / 2, barHeight + 10, barWidth, 5);
+          ctx.fill();
+          ctx.restore();
+        }
+
+        ctx.beginPath();
+        ctx.arc(0, 0, baseRadius - 14, 0, Math.PI * 2);
+        ctx.strokeStyle = 'rgba(16, 163, 127, 0.15)';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        ctx.restore();
+        animationFrame = requestAnimationFrame(drawRing);
+      }
+
+      if (!CanvasRenderingContext2D.prototype.roundRect) {
+        CanvasRenderingContext2D.prototype.roundRect = function(x, y, w, h, r) {
+          if (w < 2 * r) r = w / 2;
+          if (h < 2 * r) r = h / 2;
+          this.moveTo(x + r, y);
+          this.lineTo(x + w - r, y);
+          this.quadraticCurveTo(x + w, y, x + w, y + r);
+          this.lineTo(x + w, y + h - r);
+          this.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+          this.lineTo(x + r, y + h);
+          this.quadraticCurveTo(x, y + h, x, y + h - r);
+          this.lineTo(x, y + r);
+          this.quadraticCurveTo(x, y, x + r, y);
+          return this;
+        };
+      }
+
+      function startVisualizer() {
+        if (animationFrame) cancelAnimationFrame(animationFrame);
+        drawRing();
+      }
+
+      // --------------------------------------------------------------
+      // WATCHDOG
+      // --------------------------------------------------------------
+      function startWatchdog() {
+        if (watchdogInterval) clearInterval(watchdogInterval);
+        watchdogInterval = setInterval(() => {
+          if (micEnabled && recognition && !recognitionActive && !isSpeaking) {
+            try { recognition.start(); recognitionActive = true; } catch (e) {}
+          }
+        }, CONFIG.WATCHDOG_INTERVAL);
+      }
+
+      // --------------------------------------------------------------
+      // START / INIT
+      // --------------------------------------------------------------
+      async function startYuri() {
+        if (micEnabled) return;
+
+        setStatus('Requesting microphone…');
+        const ok = await initAudio();
+        if (!ok) { setMicState('denied'); return; }
+
+        recognition = initRecognition();
+        if (!recognition) {
+          setStatus('Speech recognition not available', true);
+          setMicState('denied');
+          return;
+        }
+
+        micEnabled = true;
+        setMicState('idle');
+        setStatus('Say "Hey Yuri" or click the mic');
+
+        try { recognition.start(); recognitionActive = true; } catch (e) {}
+
+        startWatchdog();
+        startVisualizer();
+        document.body.removeEventListener('click', startYuriOnce);
+      }
+
+      function startYuriOnce() { startYuri(); }
+
+      // --------------------------------------------------------------
+      // EVENT LISTENERS
+      // --------------------------------------------------------------
+      document.body.addEventListener('click', startYuriOnce);
+
+      micButton.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (!micEnabled) startYuri();
+        else if (!activationTimer) activateYuri();
+      });
+
+      if (window.speechSynthesis) {
+        window.speechSynthesis.getVoices();
+        window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices();
+      }
+
+      window.addEventListener('beforeunload', () => {
+        if (micStream) micStream.getTracks().forEach(t => t.stop());
+        if (watchdogInterval) clearInterval(watchdogInterval);
+        if (animationFrame) cancelAnimationFrame(animationFrame);
+        if (vadInstance) vadInstance.destroy();
+        if (activationTimer) clearTimeout(activationTimer);
+        if (commandWaitTimer) clearTimeout(commandWaitTimer);
+        if (conversationTimer) clearTimeout(conversationTimer);
+        if (vadSpeechEndTimer) clearTimeout(vadSpeechEndTimer);
+        if (window.speechSynthesis) window.speechSynthesis.cancel();
+      });
+
+      setMicState('idle');
+      setStatus('Click anywhere to start Yuri');
+    })();
+  </script>
+</body>
+</html>
